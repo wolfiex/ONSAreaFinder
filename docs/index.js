@@ -22,18 +22,35 @@ map.fitBounds([
     "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
     {
       attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>  &copy; <a href="https://carto.com/attributions">CARTO</a> &copy ONS &copy; DanEllis    <br/>  -- <br> <div id="credit"/> <b> <i>Instructions: Click to start selecting an area bounding box</i> ..</b>'
     }
   ).addTo(map);
 
+
+  var bounds = [[0,0], [0,0]];     
+  var rect = L.rectangle(bounds).addTo(map);
+  console.warn('rrrr',rect)
+
   /// Bounding Box
   var clicked = false
-  let bbox = {
-              minX: 0,
-              minY: 0,
-              maxX: 0,
-              maxY: 0
-          }
+  var selected = false
+  let bbox = {x:[],y:[]}
+
+  let credits = document.getElementById('credits')
+
+
+  map.on('mousemove', function (m){
+    if (clicked){
+      rect.setBounds([[bbox.y[0],bbox.x[0]],m.latlng])
+
+    }
+
+
+
+
+  })
+
+
 
   map.on('click', function(e) {     
 
@@ -42,35 +59,48 @@ map.fitBounds([
 
         if (clicked){
 
-          bbox.maxX = cloc.lng
-          bbox.maxY = cloc.lat
+          bbox.x.push(cloc.lng)
+          bbox.y.push(cloc.lat)
 
-          res = tree.search(bbox);
+          let box = {
+            'minX':Math.min(...bbox.x),
+            'maxX':Math.max(...bbox.x),
+            'minY':Math.min(...bbox.y),
+            'maxY':Math.max(...bbox.y),
+          }
 
-          console.log(res)
+          rect.setBounds([[box.minY,box.minX],[box.maxY,box.maxX]])
 
-          res = res.reduce((acc, obj) => {
-              const key = obj['origin'];
-              if (!acc[key]) {
-                acc[key] = [];
-              }
-              acc[key].push(obj);
-              return acc;
-          }, {});
+          console.error(box,bbox)
+          
+
+
+
+
+
+
+          flat = tree.search(box);
+          console.log(flat)
+
+          res = groupby(flat,'origin')
+          download(res,box)
 
           console.table(res)
           console.log(res)
 
 
           var popup = L.popup()
-            .setLatLng(cloc)
-            .setContent(`<p>Hello world!<br />This is a nice popup. ${res}</p>`+ table(res))
+            .setLatLng( L.latLng(box.maxY,(box.maxX+box.minX)/2))
+            .setContent(`<h4>Areas Found: ${flat.length}</h4> Columns are Year | areas | length 
+            <br />`+ table(res))
             .openOn(map);    
 
         } else {
-
-          bbox.minX = cloc.lng
-          bbox.minY = cloc.lat
+          
+          bbox = {x:[],y:[]}
+          bbox.x.push(cloc.lng)
+          bbox.y.push(cloc.lat)
+          credit.innerHTML=''
 
         }
 
@@ -86,22 +116,26 @@ return 'leaf'
 }
 
 function table(data){
-  console.log(data)
   string = ''
 
-  Object.values(data).forEach(
+  Object.keys(data).forEach(
     order => {
+      cstr =''
       string += `
-      '<b> ${order} </b>`
+      <b> ${order} </b>`
 
-      data[order].forEach(item => {
-          string += `<tr>
-                      <td>${item.year}</td>
-                      <td>${item.id}</td>
-                  </tr>`
+      g = groupby(data[order],'year')
+      
+      Object.keys(g).forEach(item => {
 
+        year = g[item]
+
+          string+=`<p class='item'> <i> ${item} </i>:   <input type="text" id="${item}" name="${item}" value="${year.map(w=>w['id']).join(',')}" readonly> (${year.length})
+           </p> `
 
       })
+
+      // credit.innerHTML = cstr
       
     }
   
@@ -117,5 +151,26 @@ function table(data){
   `
 }
 
+function download(results,box){
+
+      var data = "text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({bounds:box,areas:results}));
+      // el.setAttribute("href", "data:"+data);
+      // el.setAttribute("download", "data.json");   
+
+      credit.innerHTML = `<a href=data:${data} download='areafinder.json'> Download Selection </a> `
+
+
+}
+
+function groupby(arr,prop){
+  return arr.reduce((acc, obj) => {
+              const key = obj[prop];
+              if (!acc[key]) {
+                acc[key] = [];
+              }
+              acc[key].push(obj);
+              return acc;
+          }, {});
+}
 
 main().then(console.log)
